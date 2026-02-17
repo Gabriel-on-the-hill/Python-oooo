@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spy School | Decryption Engine</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Top Section: Mission Header -->
+        <header class="mission-header">
+            <div class="mission-info">
+                <h1>MISSION: DECRYPTION PROTOCOL</h1>
+                <div class="agent-rank" id="agentRank">RANK: RECRUIT</div>
+            </div>
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-interface">
+
+            <!-- Screen 0: Class Setup (First Screen) -->
+            <section id="classSetupScreen" class="screen active">
+                <h2>CLASS ACCESS</h2>
+                <div class="setup-form">
+                    <label>Class ID:
+                        <input type="text" id="classIdInput" placeholder="e.g. Y9-CS">
+                    </label>
+                    <label>Student Name:
+                        <input type="text" id="studentIdInput" placeholder="Enter Agent Name">
+                    </label>
+                    <button id="btnStartClass" class="action-btn">ENTER MISSION</button>
+                </div>
+            </section>
+
+            <!-- Screen 1: Diagnostic Mode -->
+            <section id="diagnosticScreen" class="screen hidden">
+                <h2>⚠️ SECURITY CLEARANCE REQUIRED</h2>
+                <p>Complete the following diagnostic to unlock the Decryption Engine.</p>
+
+                <div class="diagnostic-tasks">
+                    <!-- Task 1 -->
+                    <div class="task-card" id="task1">
+                        <h3>1. Loop Range</h3>
+                        <p>What numbers does <code>range(3)</code> produce?</p>
+                        <div class="options">
+                            <button class="option-btn" data-correct="false">1, 2, 3</button>
+                            <button class="option-btn" data-correct="true">0, 1, 2</button>
+                            <button class="option-btn" data-correct="false">0, 1, 2, 3</button>
+                        </div>
+                    </div>
+
+                    <!-- Task 2 -->
+                    <div class="task-card hidden" id="task2">
+                        <h3>2. Alphabet Index</h3>
+                        <p>What is the index of 'a' in our list?</p>
+                        <div class="options">
+                            <button class="option-btn" data-correct="false">1</button>
+                            <button class="option-btn" data-correct="true">0</button>
+                            <button class="option-btn" data-correct="false">26</button>
+                        </div>
+                    </div>
+
+                    <!-- Task 3 -->
+                    <div class="task-card hidden" id="task3">
+                        <h3>3. Cipher Math</h3>
+                        <p>If <code>position = 2</code> and <code>key = 5</code>, what is <code>position - key</code>?
+                        </p>
+                        <div class="options">
+                            <button class="option-btn" data-correct="true">-3</button>
+                            <button class="option-btn" data-correct="false">3</button>
+                            <button class="option-btn" data-correct="false">7</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="diagnosticFeedback" class="feedback-msg"></div>
+            </section>
+
+            <!-- Screen 2: Decryption Engine (Main) -->
+            <section id="decryptionScreen" class="screen hidden">
+
+                <!-- Teacher Customization Controls -->
+                <div class="mission-controls">
+                    <div class="control-group">
+                        <label>Encrypted Text:
+                            <input type="text" id="encryptedInput" value="khoor zruog">
+                        </label>
+                        <label>Key:
+                            <input type="number" id="keyInput" value="3" min="1" max="25">
+                        </label>
+                        <button id="btnStartMission" class="ctrl-btn">Restart Mission</button>
+                    </div>
+                </div>
+
+                <!-- Encrypted String Visualizer -->
+                <div id="encryptedVisualizer" class="encrypted-display"></div>
+
+                <!-- Center Section: Loop Inspector Panel -->
+                <div class="loop-inspector-panel">
+                    <div class="inspector-header">
+                        <span id="iterationDisplay">Iteration: -</span>
+                        <span id="currentLetterDisplay">Current: -</span>
+                        <span id="indexDisplay">Index: -</span>
+                    </div>
+
+                    <div class="equation-display" id="equationDisplay">
+                        <!-- Dynamic Equation updates here -->
+                        <div class="equation-template">new_pos = (pos - key) % 26</div>
+                        <div class="calculation-step" id="calcStep1"></div>
+                        <div class="calculation-step" id="calcStep2"></div>
+                    </div>
+
+                    <div class="result-display">
+                        <div>Result: <span id="resultLetter" class="highlight-result">-</span></div>
+                        <div>Decrypted: <span id="accumulatedText" class="decrypted-text"></span></div>
+                    </div>
+                </div>
+
+                <!-- Alphabet Visualizer -->
+                <div class="alphabet-visualizer" id="alphabetVisualizer">
+                    <!-- Generated by JS -->
+                </div>
+
+                <!-- Comparison Toggle -->
+                <div class="comparison-toggle">
+                    <label>
+                        <input type="checkbox" id="explicitIndexToggle">
+                        Show Explicit Index Loop (for i)
+                    </label>
+                </div>
+            </section>
+
+            <!-- Screen 3: Thonny Transition (Hidden) -->
+            <section id="thonnyScreen" class="screen hidden">
+                <h2>MISSION ACCOMPLISHED</h2>
+                <p>Manual alignment complete. Proceed to automation.</p>
+                <div class="code-block" id="pythonCodeTemplate"></div>
+            </section>
+        </main>
+
+        <!-- Controls Panel -->
+        <footer class="controls-panel">
+            <div class="playback-controls">
+                <button id="btnStepBack" class="ctrl-btn">⏮ Step Back</button>
+                <button id="btnPause" class="ctrl-btn">⏸ Pause</button>
+                <button id="btnPlay" class="ctrl-btn">▶ Auto-Play</button>
+                <button id="btnStepForward" class="ctrl-btn">Step Forward ⏭</button>
+                <button id="btnReset" class="ctrl-btn warning">⚠ Reset</button>
+            </div>
+            <div class="settings-controls">
+                <label>Speed: <input type="range" id="speedSlider" min="1" max="5" value="3"></label>
+                <label>Think Mode: <input type="checkbox" id="thinkModeToggle"></label>
+                <button id="btnExportData" class="ctrl-btn">Export Data (CSV)</button>
+            </div>
+        </footer>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
