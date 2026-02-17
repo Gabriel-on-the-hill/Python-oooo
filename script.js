@@ -236,7 +236,7 @@ const UIController = {
         encryptedVisualizer: null, thinkModeToggle: null, preserveCaseToggle: null,
         predictInput: null, btnReveal: null, btnSkipPredict: null, predictFeedback: null,
         btnExportData: null, classIdInput: null, studentIdInput: null, btnStartClass: null,
-        diagnosticScreen: null
+        diagnosticScreen: null, classSetupScreen: null
     },
 
     init() {
@@ -246,13 +246,31 @@ const UIController = {
             'btnReset', 'speedSlider', 'explicitIndexToggle', 'thonnyScreen', 'decryptionScreen',
             'pythonCodeTemplate', 'agentRank', 'encryptedVisualizer', 'thinkModeToggle',
             'preserveCaseToggle', 'predictInput', 'btnReveal', 'btnSkipPredict', 'predictFeedback',
-            'btnExportData', 'classIdInput', 'studentIdInput', 'btnStartClass', 'diagnosticScreen'
+            'btnExportData', 'classIdInput', 'studentIdInput', 'btnStartClass', 'diagnosticScreen', 'classSetupScreen'
         ];
         ids.forEach(id => { this.elements[id] = $id(id); });
 
         if (this.elements.alphabetVisualizer) this.generateAlphabetGrid();
         this.attachListeners();
         DiagnosticController.init();
+
+        // Initial Screen Setup
+        this.showScreen('classSetupScreen');
+    },
+
+    showScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s => {
+            s.classList.remove('active');
+            s.classList.add('hidden'); // Ensure defensive hidden state
+        });
+
+        const target = $id(screenId);
+        if (target) {
+            target.classList.remove('hidden');
+            target.classList.add('active');
+            // Auto scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     },
 
     generateAlphabetGrid() {
@@ -399,7 +417,8 @@ for letter in encrypted:
     if letter in alphabet:
         position = alphabet.index(letter)
         new_position = (position - key) % 26
-        decrypted += alphabet[new_position]
+        new_letter = alphabet[new_position]
+        decrypted += new_letter
     else:
         decrypted += letter
 
@@ -414,11 +433,9 @@ print(decrypted)
             const classId = this.elements.classIdInput ? this.elements.classIdInput.value : 'default';
             const studentId = this.elements.studentIdInput ? this.elements.studentIdInput.value : 'unknown';
             ClassSync.saveAttempt(classId, studentId);
-            // Show Thonny screen
-            const th = $id('thonnyScreen');
-            const dec = $id('decryptionScreen');
-            if (dec) dec.classList.add('hidden');
-            if (th) { th.classList.remove('hidden'); th.scrollIntoView({ behavior: 'smooth' }); }
+
+            // Transition to Thonny Screen
+            this.showScreen('thonnyScreen');
         }, 800);
     },
 
@@ -428,10 +445,7 @@ print(decrypted)
         if (this.elements.accumulatedText) this.elements.accumulatedText.innerText = '-';
         if (this.elements.iterationDisplay) this.elements.iterationDisplay.innerText = 'Iteration: - / -';
         this.updatePlayButton(false);
-        const th = this.elements.thonnyScreen;
-        if (th) th.classList.add('hidden');
-        const dec = this.elements.decryptionScreen;
-        if (dec) dec.classList.remove('hidden');
+        this.showScreen('decryptionScreen');
     },
 
     attachListeners() {
@@ -456,6 +470,12 @@ print(decrypted)
         });
         if (els.btnSkipPredict) els.btnSkipPredict.addEventListener('click', () => LoopEngine.skipPrediction());
 
+        // Thonny Finish Button
+        if ($id('btnFinish')) $id('btnFinish').addEventListener('click', () => {
+            // Return to start or reset? Let's reload or just go back to setup
+            location.reload();
+        });
+
         // Start mission button
         const startBtn = $id('btnStartMission');
         if (startBtn) startBtn.addEventListener('click', () => {
@@ -474,14 +494,13 @@ print(decrypted)
         if (els.btnStartClass) els.btnStartClass.addEventListener('click', () => {
             const classId = els.classIdInput ? (els.classIdInput.value || 'default') : 'default';
             const studentId = els.studentIdInput ? (els.studentIdInput.value || 'unknown') : 'unknown';
-            // hide setup, show diagnostic
-            const setup = $id('classSetupScreen');
-            const diag = $id('diagnosticScreen');
-            if (setup) setup.classList.add('hidden');
-            if (diag) diag.classList.remove('hidden');
+
             // store temporarily in UIController
             els.classIdInput.value = classId;
             els.studentIdInput.value = studentId;
+
+            // Transition using new helper
+            this.showScreen('diagnosticScreen');
         });
 
         // Keyboard controls
@@ -515,14 +534,14 @@ const DiagnosticController = {
                         const next = parent ? parent.nextElementSibling : null;
                         if (next && next.classList && next.classList.contains('task-card')) next.classList.remove('hidden');
                         else {
-                            // All done -> start mission screen (show decryption screen)
-                            const diag = $id('diagnosticScreen');
-                            const dec = $id('decryptionScreen');
-                            if (diag) diag.classList.add('hidden');
-                            if (dec) dec.classList.remove('hidden');
-                            // set initial fields from UI
+                            // All done -> start mission screen
+
+                            // Initialize fields
                             const encrypted = $id('encryptedInput') ? $id('encryptedInput').value : 'khoor zruog';
                             const key = $id('keyInput') ? parseInt($id('keyInput').value, 10) : CONFIG.DEFAULT_KEY;
+
+                            // Transition
+                            UIController.showScreen('decryptionScreen');
                             LoopEngine.init(encrypted, key);
                         }
                     }, 700);
