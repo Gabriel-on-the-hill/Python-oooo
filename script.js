@@ -1,198 +1,123 @@
-/**
- * Spy School Decryption Engine
- * Modular Architecture: Logic -> State -> UI
- * V2.0: Multi-Student, Robust, Classroom Ready
- */
+// script.js - Spy School Decryption Engine (vanilla JS)
+// Defensive, modular, classroom-ready, Think Mode + export
 
+// ---------- Utility ----------
+function $id(id) { return document.getElementById(id) || null; }
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+// ---------- Config ----------
 const CONFIG = {
     ALPHABET: 'abcdefghijklmnopqrstuvwxyz'.split(''),
     DEFAULT_KEY: 3,
-    SPEED_LEVELS: [2000, 1500, 1000, 500, 200]
+    SPEED_LEVELS: [2000, 1500, 1000, 600, 300]
 };
 
-// Utility: safe DOM getter
-function $id(id) {
-    return document.getElementById(id) || null;
-}
-
-function clamp(n, min, max) {
-    return Math.max(min, Math.min(max, n));
-}
-
-/**
- * 0. ClassSync & Persistence Module
- * Handles classroom data: Student Identity, Attempts, CSV Export
- */
-const ClassSync = {
-    currentClassId: 'default',
-    currentStudentId: 'unknown',
-
-    init: () => {
-        try {
-            const lastClass = localStorage.getItem('lastClassId');
-            if (lastClass && $id('classIdInput')) $id('classIdInput').value = lastClass;
-        } catch (e) {
-            console.warn("ClassSync: LocalStorage access denied", e);
-        }
-    },
-
-    setIdentity: (classId, studentId) => {
-        ClassSync.currentClassId = classId || 'default';
-        ClassSync.currentStudentId = studentId || 'agent_007';
-        try {
-            localStorage.setItem('lastClassId', ClassSync.currentClassId);
-        } catch (e) { /* ignore */ }
-    },
-
-    storageKey: (classId) => `spyclass_${classId || 'default'}`,
-
-    saveAttempt: (attemptData) => {
-        try {
-            const key = ClassSync.storageKey(ClassSync.currentClassId);
-            const data = JSON.parse(localStorage.getItem(key) || '[]');
-
-            const entry = {
-                timestamp: new Date().toISOString(),
-                studentId: ClassSync.currentStudentId,
-                encrypted: attemptData.encrypted,
-                key: attemptData.key,
-                finalDecrypted: attemptData.finalDecrypted,
-                historySnapshot: attemptData.history
-            };
-
-            data.push(entry);
-            localStorage.setItem(key, JSON.stringify(data));
-            console.log("Attempt saved for", ClassSync.currentStudentId);
-        } catch (e) {
-            console.error("ClassSync: Save failed", e);
-            alert("Warning: Could not save progress locally. Please keep this tab open.");
-        }
-    },
-
-    exportClassCSV: () => {
-        const classId = ClassSync.currentClassId;
-        const key = ClassSync.storageKey(classId);
-        const data = JSON.parse(localStorage.getItem(key) || '[]');
-
-        if (!data.length) {
-            alert('No mission data found for Class ID: ' + classId);
-            return;
-        }
-
-        const headers = ['Timestamp', 'Student ID', 'Encrypted Text', 'Key', 'Decrypted Result'];
-        const rows = [headers.join(',')];
-
-        data.forEach(r => {
-            // Escape quotes for CSV safety
-            const cleanEnc = r.encrypted.replace(/"/g, '""');
-            const cleanDec = r.finalDecrypted.replace(/"/g, '""');
-            rows.push(`${r.timestamp},"${r.studentId}","${cleanEnc}",${r.key},"${cleanDec}"`);
-        });
-
-        const csv = rows.join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `SpyMission_${classId}_${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-};
-
-/**
- * 1. CipherEngine
- * Pure logic for the Caesar Cipher.
- */
+// ---------- CipherEngine ----------
 const CipherEngine = {
-    calculateNewPosition: (position, key) => {
+    calculateNewPosition(position, key) {
+        // safe handling of negative
         return ((position - key) % 26 + 26) % 26;
     },
 
-    decryptChar: (letter, key) => {
-        // Check for uppercase preservation
-        const isUpper = (letter === letter.toUpperCase() && /[A-Z]/.test(letter));
+    decryptChar(letter, key, preserveCase = true) {
+        const isUpper = /[A-Z]/.test(letter);
         const lowerLetter = letter.toLowerCase();
         const index = CONFIG.ALPHABET.indexOf(lowerLetter);
 
         if (index === -1) {
-            return {
-                isSpecial: true,
-                char: letter,
-                originalIndex: -1,
-                newIndex: -1,
-                rawCalculation: null
-            };
+            return { isSpecial: true, char: letter, originalIndex: -1, newIndex: -1, rawCalculation: null };
         }
 
         const rawCalc = index - key;
         const newIndex = CipherEngine.calculateNewPosition(index, key);
         let newChar = CONFIG.ALPHABET[newIndex];
-        if (isUpper) newChar = newChar.toUpperCase();
+        if (preserveCase && isUpper) newChar = newChar.toUpperCase();
 
-        return {
-            isSpecial: false,
-            char: newChar,
-            originalIndex: index,
-            newIndex: newIndex,
-            rawCalculation: rawCalc
-        };
+        return { isSpecial: false, char: newChar, originalIndex: index, newIndex, rawCalculation: rawCalc };
     }
 };
 
-/**
- * 2. LoopEngine
- * Manages the "step-by-step" state.
- */
+// ---------- ClassSync (local storage based) ----------
+const ClassSync = {
+    storageKey(classId) { return `spyclass_${classId || 'default'}`; },
+
+    saveAttempt(classId, studentId, snapshot) {
+        try {
+            const key = ClassSync.storageKey(classId);
+            const data = JSON.parse(localStorage.getItem(key) || '[]');
+            data.push({
+                timestamp: new Date().toISOString(),
+                studentId: studentId || 'unknown',
+                encrypted: LoopEngine.state.encryptedText,
+                key: LoopEngine.state.key,
+                finalDecrypted: LoopEngine.state.accumulatedText,
+                history: snapshot || LoopEngine.state.history
+            });
+            localStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {
+            console.warn('ClassSync save failed', e);
+        }
+    },
+
+    exportClassCSV(classId) {
+        const key = ClassSync.storageKey(classId);
+        const data = JSON.parse(localStorage.getItem(key) || '[]');
+        if (!data.length) { alert('No attempts found for this class.'); return; }
+
+        const rows = [['timestamp', 'studentId', 'encrypted', 'key', 'finalDecrypted', 'historyJSON']];
+        data.forEach(r => rows.push([r.timestamp, r.studentId, `"${r.encrypted}"`, r.key, `"${r.finalDecrypted}"`, `"${JSON.stringify(r.history).replace(/"/g, '""')}"`]));
+        const csv = rows.map(r => r.join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `spy_school_class_${classId || 'default'}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+};
+
+// ---------- LoopEngine ----------
 const LoopEngine = {
     state: {
         encryptedText: "",
-        key: 3,
+        key: CONFIG.DEFAULT_KEY,
         currentIndex: -1,
         history: [],
         isPlaying: false,
         timer: null,
-        accumulatedText: ""
+        accumulatedText: "",
+        waitingForReveal: false // for Think Mode
     },
 
-    init: (text, key) => {
-        LoopEngine.pause();
-        LoopEngine.state = {
-            encryptedText: text,
-            key: key,
+    init(text, key) {
+        this.pause();
+        this.state = {
+            encryptedText: text || "",
+            key: clamp(parseInt(key, 10) || CONFIG.DEFAULT_KEY, 0, 25),
             currentIndex: -1,
             history: [],
             isPlaying: false,
             timer: null,
-            accumulatedText: ""
+            accumulatedText: "",
+            waitingForReveal: false
         };
-
         UIController.reset();
-        UIController.initEncryptedVisualizer(text);
-        LoopEngine.notifyUI();
+        this.notifyUI();
     },
 
-    nextStep: () => {
+    nextStep() {
         const s = LoopEngine.state;
-
-        // Bounds check
         if (s.currentIndex >= s.encryptedText.length - 1) {
             LoopEngine.pause();
-            if (s.currentIndex === s.encryptedText.length - 1) {
-                // Determine if this was the final step just completed or if we are already done
-                // Actually, if currentIndex == length-1, we have processed the last char.
-                // But we want to trigger complete only once.
-                // Let's rely on the fact that if we click next and we are at the end, we are done.
-                UIController.showMissionComplete();
-            }
+            if (s.currentIndex === s.encryptedText.length - 1) UIController.showMissionComplete();
             return;
         }
 
         s.currentIndex++;
         const char = s.encryptedText[s.currentIndex];
-        const result = CipherEngine.decryptChar(char, s.key);
+        const preserveCase = UIController.elements.preserveCaseToggle ? UIController.elements.preserveCaseToggle.checked : true;
+        const result = CipherEngine.decryptChar(char, s.key, preserveCase);
 
         const nextChar = result.char;
         s.accumulatedText += nextChar;
@@ -201,24 +126,26 @@ const LoopEngine = {
             iteration: s.currentIndex,
             inputChar: char,
             key: s.key,
-            result: result,
+            result,
             accumulated: s.accumulatedText
         };
 
         s.history.push(snapshot);
+
+        // If Think Mode on -> set waiting state so we hide calculations until reveal
+        const thinkOn = UIController.elements.thinkModeToggle ? UIController.elements.thinkModeToggle.checked : false;
+        s.waitingForReveal = !!thinkOn;
         LoopEngine.notifyUI();
 
-        // Think Mode Logic: Auto-pause after 1 step
-        const thinkMode = $id('thinkModeToggle')?.checked;
-        if (thinkMode && s.isPlaying) {
+        // If autoplay and think mode on -> auto-pause immediately after pushing snapshot to allow reveal
+        if (s.waitingForReveal && s.isPlaying) {
             LoopEngine.pause();
-            // Optional: Show prediction prompt here if we had a modal
         }
     },
 
-    prevStep: () => {
-        LoopEngine.pause();
-        const s = LoopEngine.state;
+    prevStep() {
+        this.pause();
+        const s = this.state;
         if (s.currentIndex < 0) return;
 
         s.history.pop();
@@ -230,80 +157,106 @@ const LoopEngine = {
             s.accumulatedText = "";
         }
 
-        LoopEngine.notifyUI();
+        s.waitingForReveal = false;
+        this.notifyUI();
     },
 
-    play: () => {
-        if (LoopEngine.state.currentIndex >= LoopEngine.state.encryptedText.length - 1) return;
+    play() {
+        const s = this.state;
+        if (s.currentIndex >= s.encryptedText.length - 1) return;
 
         const speedEl = $id('speedSlider');
-        let speedIdx = 2; // default
-        if (speedEl) {
-            const val = parseInt(speedEl.value, 10);
-            speedIdx = clamp(isNaN(val) ? 3 : val, 1, CONFIG.SPEED_LEVELS.length) - 1;
-        }
+        let val = speedEl ? parseInt(speedEl.value, 10) : 3;
+        val = isNaN(val) ? 3 : val;
+        const speedIdx = clamp(val - 1, 0, CONFIG.SPEED_LEVELS.length - 1);
         const speed = CONFIG.SPEED_LEVELS[speedIdx] || 1000;
 
-        LoopEngine.state.isPlaying = true;
-        LoopEngine.state.timer = setInterval(LoopEngine.nextStep, speed);
+        s.isPlaying = true;
+        s.timer = setInterval(() => {
+            // If think mode waiting, do not auto advance
+            if (s.waitingForReveal) {
+                LoopEngine.pause();
+            } else {
+                LoopEngine.nextStep();
+            }
+        }, speed);
         UIController.updatePlayButton(true);
     },
 
-    pause: () => {
-        LoopEngine.state.isPlaying = false;
-        if (LoopEngine.state.timer) clearInterval(LoopEngine.state.timer);
+    pause() {
+        const s = this.state;
+        s.isPlaying = false;
+        if (s.timer) clearInterval(s.timer);
+        s.timer = null;
         UIController.updatePlayButton(false);
     },
 
-    notifyUI: () => {
-        const s = LoopEngine.state;
+    reset() {
+        this.init(this.state.encryptedText, this.state.key);
+    },
+
+    revealPrediction() {
+        this.state.waitingForReveal = false;
+        this.notifyUI();
+    },
+
+    skipPrediction() {
+        this.state.waitingForReveal = false;
+        this.notifyUI();
+    },
+
+    notifyUI() {
+        const s = this.state;
         const currentSnapshot = s.history.length > 0 ? s.history[s.history.length - 1] : null;
 
-        // Update Inspectors
-        UIController.updateLoopInspector(s.currentIndex, s.encryptedText.length, currentSnapshot, s.key);
-        UIController.updateProgress(s.currentIndex, s.encryptedText.length);
-        UIController.updateEncryptedHighlight(s.currentIndex);
-
-        // Update Alphabet
+        UIController.updateLoopInspector(s.currentIndex, s.encryptedText.length, currentSnapshot, s.key, s.waitingForReveal);
         if (currentSnapshot && !currentSnapshot.result.isSpecial) {
             UIController.updateAlphabet(currentSnapshot.result.originalIndex, currentSnapshot.result.newIndex);
         } else {
             UIController.clearAlphabetHighlight();
         }
+        UIController.updateEncryptedVisualizer(s.encryptedText, s.currentIndex);
+        UIController.updateProgress(s.currentIndex, s.encryptedText.length);
     }
 };
 
-/**
- * 3. UIController
- * Handles DOM updates using safe getters.
- */
+// ---------- UIController ----------
 const UIController = {
-    elements: {},
-
-    init: () => {
-        const ids = [
-            'alphabetVisualizer', 'iterationDisplay', 'resultLetter', 'accumulatedText',
-            'equationDisplay', 'currentLetterDisplay', 'indexDisplay',
-            'btnStepForward', 'btnStepBack', 'btnPlay', 'btnPause', 'btnReset', 'speedSlider',
-            'explicitIndexToggle', 'thonnyScreen', 'decryptionScreen', 'pythonCodeTemplate', 'agentRank',
-            'classSetupScreen', 'diagnosticScreen', 'classIdInput', 'studentIdInput', 'btnStartClass',
-            'btnStartMission', 'encryptedInput', 'keyInput', 'encryptedVisualizer', 'progressBar', 'btnExportData'
-        ];
-
-        ids.forEach(id => {
-            UIController.elements[id] = $id(id);
-        });
-
-        if (UIController.elements.alphabetVisualizer) {
-            UIController.generateAlphabetGrid();
-        }
-
-        UIController.attachListeners();
-        ClassSync.init();
+    elements: {
+        alphabetVisualizer: null,
+        iterationDisplay: null,
+        resultLetter: null,
+        accumulatedText: null,
+        equationDisplay: null,
+        currentLetterDisplay: null,
+        indexDisplay: null,
+        btnStepForward: null, btnStepBack: null, btnPlay: null, btnPause: null,
+        btnReset: null, speedSlider: null, explicitIndexToggle: null, thonnyScreen: null,
+        decryptionScreen: null, pythonCodeTemplate: null, agentRank: null,
+        encryptedVisualizer: null, thinkModeToggle: null, preserveCaseToggle: null,
+        predictInput: null, btnReveal: null, btnSkipPredict: null, predictFeedback: null,
+        btnExportData: null, classIdInput: null, studentIdInput: null, btnStartClass: null,
+        diagnosticScreen: null
     },
 
-    generateAlphabetGrid: () => {
-        const container = UIController.elements.alphabetVisualizer;
+    init() {
+        const ids = [
+            'alphabetVisualizer', 'iterationDisplay', 'resultLetter', 'accumulatedText', 'equationDisplay',
+            'currentLetterDisplay', 'indexDisplay', 'btnStepForward', 'btnStepBack', 'btnPlay', 'btnPause',
+            'btnReset', 'speedSlider', 'explicitIndexToggle', 'thonnyScreen', 'decryptionScreen',
+            'pythonCodeTemplate', 'agentRank', 'encryptedVisualizer', 'thinkModeToggle',
+            'preserveCaseToggle', 'predictInput', 'btnReveal', 'btnSkipPredict', 'predictFeedback',
+            'btnExportData', 'classIdInput', 'studentIdInput', 'btnStartClass', 'diagnosticScreen'
+        ];
+        ids.forEach(id => { this.elements[id] = $id(id); });
+
+        if (this.elements.alphabetVisualizer) this.generateAlphabetGrid();
+        this.attachListeners();
+        DiagnosticController.init();
+    },
+
+    generateAlphabetGrid() {
+        const container = this.elements.alphabetVisualizer;
         if (!container) return;
         container.innerHTML = '';
         CONFIG.ALPHABET.forEach((letter, index) => {
@@ -315,69 +268,38 @@ const UIController = {
         });
     },
 
-    initEncryptedVisualizer: (text) => {
-        const container = UIController.elements.encryptedVisualizer;
-        if (!container) return;
-        container.innerHTML = '';
-        text.split('').forEach((char, i) => {
-            const span = document.createElement('span');
-            span.className = 'encrypted-char';
-            span.id = `enc-char-${i}`;
-            span.innerText = char;
-            container.appendChild(span);
-        });
-    },
-
-    updateEncryptedHighlight: (currentIndex) => {
-        // Clear previous
-        document.querySelectorAll('.encrypted-char').forEach((el, i) => {
-            el.classList.remove('active');
-            if (i <= currentIndex) el.classList.add('done');
-            else el.classList.remove('done');
-        });
-
-        if (currentIndex >= 0) {
-            const activeEl = $id(`enc-char-${currentIndex}`);
-            if (activeEl) {
-                activeEl.classList.add('active');
-                activeEl.classList.remove('done');
-            }
-        }
-    },
-
-    updateAlphabet: (oldIdx, newIdx) => {
-        UIController.clearAlphabetHighlight();
+    updateAlphabet(oldIdx, newIdx) {
+        this.clearAlphabetHighlight();
         if (oldIdx !== -1) {
-            const oldEl = document.getElementById(`char-${oldIdx}`);
+            const oldEl = $id(`char-${oldIdx}`);
             if (oldEl) oldEl.classList.add('highlight-old');
         }
         if (newIdx !== -1) {
-            const newEl = document.getElementById(`char-${newIdx}`);
+            const newEl = $id(`char-${newIdx}`);
             if (newEl) newEl.classList.add('highlight-new');
         }
     },
 
-    clearAlphabetHighlight: () => {
-        document.querySelectorAll('.char-box').forEach(el => {
-            el.classList.remove('highlight-old', 'highlight-new');
-        });
+    clearAlphabetHighlight() {
+        document.querySelectorAll('.char-box').forEach(el => el.classList.remove('highlight-old', 'highlight-new'));
     },
 
-    updateLoopInspector: (currentIndex, total, snapshot, key) => {
-        const els = UIController.elements;
+    updateLoopInspector(currentIndex, total, snapshot, key, waitingForReveal) {
+        const els = this.elements;
         const showExplicit = els.explicitIndexToggle ? els.explicitIndexToggle.checked : false;
 
-        // Iteration
         const displayIndex = currentIndex >= 0 ? (currentIndex + 1) : '-';
         if (els.iterationDisplay) els.iterationDisplay.innerText = `Iteration: ${displayIndex} / ${total}`;
 
         if (snapshot) {
-            let letterText = `Current: ${snapshot.inputChar}`;
-            let indexText = `Index: ${snapshot.result.originalIndex}`;
+            const inputChar = snapshot.inputChar;
+            const origIdx = snapshot.result.originalIndex;
+            let letterText = `Current: ${inputChar}`;
+            let indexText = `Index: ${origIdx}`;
 
             if (showExplicit) {
-                letterText = `letter: "${snapshot.inputChar}" (encrypted[${currentIndex}])`;
-                indexText = `i: ${currentIndex} (Index of "${snapshot.inputChar}")`;
+                letterText = `letter: "${inputChar}" (encrypted[${currentIndex}])`;
+                indexText = `i: ${currentIndex} (Index of "${inputChar}")`;
             }
 
             if (els.currentLetterDisplay) els.currentLetterDisplay.innerText = letterText;
@@ -387,60 +309,90 @@ const UIController = {
                 if (els.equationDisplay) els.equationDisplay.innerHTML = `<div class="equation-template">Special Character: Keep as is.</div>`;
             } else {
                 if (els.indexDisplay) els.indexDisplay.innerText = indexText;
-                const raw = snapshot.result.rawCalculation;
-                const final = snapshot.result.newIndex;
-                if (els.equationDisplay) els.equationDisplay.innerHTML = `
-                    <div class="equation-template">new_pos = (pos - key) % 26</div>
-                    <div class="calculation-step">Step 1: ${snapshot.result.originalIndex} - ${key} = ${raw}</div>
-                    <div class="calculation-step">Step 2: ${raw} % 26 = ${final}</div>
-                `;
+
+                // Handle Think Mode hiding
+                if (waitingForReveal) {
+                    // hide calculations, show predict prompt
+                    if (els.equationDisplay) els.equationDisplay.innerHTML = `<div class="equation-template">Prediction required — reveal to see calculation</div>`;
+                    this.showThinkPrompt(snapshot);
+                } else {
+                    // show full calculation
+                    const raw = snapshot.result.rawCalculation;
+                    const final = snapshot.result.newIndex;
+                    if (els.equationDisplay) els.equationDisplay.innerHTML = `
+            <div class="equation-template">new_pos = (pos - key) % 26</div>
+            <div class="calculation-step">Step 1: ${snapshot.result.originalIndex} - ${key} = ${raw}</div>
+            <div class="calculation-step">Step 2: ${raw} % 26 = ${final}</div>
+          `;
+                    this.hideThinkPrompt();
+                }
             }
 
             if (els.resultLetter) els.resultLetter.innerText = snapshot.result.char;
             if (els.accumulatedText) els.accumulatedText.innerText = snapshot.accumulated;
         } else {
             if (els.resultLetter) els.resultLetter.innerText = '-';
-            if (els.accumulatedText) els.accumulatedText.innerText = '';
+            if (els.accumulatedText) els.accumulatedText.innerText = '-';
             if (els.currentLetterDisplay) els.currentLetterDisplay.innerText = `Current: -`;
             if (els.indexDisplay) els.indexDisplay.innerText = `Index: -`;
             if (els.equationDisplay) els.equationDisplay.innerHTML = `<div class="equation-template">new_pos = (pos - key) % 26</div>`;
+            this.hideThinkPrompt();
         }
     },
 
-    updateProgress: (currentIndex, total) => {
-        const bar = UIController.elements.progressBar;
+    showThinkPrompt(snapshot) {
+        const tp = this.elements.btnReveal ? this.elements.btnReveal.closest('.think-prompt') : null;
+        // toggle container visibility
+        const prompt = $id('thinkPrompt');
+        if (!prompt) return;
+        prompt.classList.remove('hidden');
+        // clear previous feedback/input
+        if (this.elements.predictInput) this.elements.predictInput.value = '';
+        if (this.elements.predictFeedback) this.elements.predictFeedback.innerText = '';
+    },
+
+    hideThinkPrompt() {
+        const prompt = $id('thinkPrompt');
+        if (!prompt) return;
+        prompt.classList.add('hidden');
+        if (this.elements.predictFeedback) this.elements.predictFeedback.innerText = '';
+    },
+
+    updateEncryptedVisualizer(text, currentIndex) {
+        const container = this.elements.encryptedVisualizer;
+        if (!container) return;
+        container.innerHTML = '';
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            const span = document.createElement('span');
+            span.className = 'char';
+            span.innerText = ch;
+            if (i === currentIndex) span.classList.add('char-current');
+            else if (i < currentIndex) span.classList.add('char-decrypted');
+            container.appendChild(span);
+        }
+    },
+
+    updateProgress(currentIndex, total) {
+        const bar = $id('progressBar');
         if (!bar) return;
-        const progress = total > 0 ? ((currentIndex + 1) / total) * 100 : 0;
-        bar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+        const pct = total === 0 ? 0 : clamp(((currentIndex + 1) / total) * 100, 0, 100);
+        bar.style.width = `${pct}%`;
     },
 
-    updatePlayButton: (isPlaying) => {
-        const els = UIController.elements;
-        if (!els.btnPlay || !els.btnPause) return;
-
-        if (isPlaying) {
-            els.btnPlay.style.display = 'none';
-            els.btnPause.style.display = 'inline-block';
-        } else {
-            els.btnPlay.style.display = 'inline-block';
-            els.btnPause.style.display = 'none';
-        }
+    updatePlayButton(isPlaying) {
+        const btnPlay = this.elements.btnPlay;
+        const btnPause = this.elements.btnPause;
+        if (!btnPlay || !btnPause) return;
+        if (isPlaying) { btnPlay.classList.add('hidden'); btnPause.classList.remove('hidden'); }
+        else { btnPlay.classList.remove('hidden'); btnPause.classList.add('hidden'); }
     },
 
-    showMissionComplete: () => {
-        // Save data first
-        const s = LoopEngine.state;
-        ClassSync.saveAttempt({
-            encrypted: s.encryptedText,
-            key: s.key,
-            finalDecrypted: s.accumulatedText,
-            history: s.history
-        });
-
+    showMissionComplete() {
         const code = `
 alphabet = ['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z']
-encrypted = "${s.encryptedText}"
-key = ${s.key}
+encrypted = "${LoopEngine.state.encryptedText}"
+key = ${LoopEngine.state.key}
 decrypted = ""
 
 for letter in encrypted:
@@ -451,126 +403,135 @@ for letter in encrypted:
     else:
         decrypted += letter
 
-print(decrypted) # Output: ${s.accumulatedText}
-        `;
-        if ($id('pythonCodeTemplate')) $id('pythonCodeTemplate').innerHTML = `<pre>${code}</pre>`;
+print(decrypted)
+`.trim();
 
+        if (this.elements.pythonCodeTemplate) this.elements.pythonCodeTemplate.innerText = code;
         setTimeout(() => {
-            alert("MISSION COMPLETE. DATA LOGGED.");
-            const rankEl = $id('agentRank');
-            if (rankEl) {
-                rankEl.innerText = "RANK: CODE BREAKER";
-                rankEl.classList.add('promoted');
-            }
-            if ($id('thonnyScreen')) {
-                $id('thonnyScreen').classList.remove('hidden');
-                $id('thonnyScreen').scrollIntoView({ behavior: "smooth" });
-            }
+            alert("MISSION COMPLETE. AGENT PROMOTED.");
+            if (this.elements.agentRank) this.elements.agentRank.innerText = "RANK: CODE BREAKER";
+            // Save attempt to localStorage
+            const classId = this.elements.classIdInput ? this.elements.classIdInput.value : 'default';
+            const studentId = this.elements.studentIdInput ? this.elements.studentIdInput.value : 'unknown';
+            ClassSync.saveAttempt(classId, studentId);
+            // Show Thonny screen
+            const th = $id('thonnyScreen');
+            const dec = $id('decryptionScreen');
+            if (dec) dec.classList.add('hidden');
+            if (th) { th.classList.remove('hidden'); th.scrollIntoView({ behavior: 'smooth' }); }
         }, 800);
     },
 
-    reset: () => {
-        UIController.clearAlphabetHighlight();
-        UIController.updateLoopInspector(-1, LoopEngine.state.encryptedText.length, null, 3);
-        UIController.updateProgress(-1, 10); // Clear progress
-        UIController.updatePlayButton(false);
-        if ($id('thonnyScreen')) $id('thonnyScreen').classList.add('hidden');
+    reset() {
+        this.clearAlphabetHighlight();
+        if (this.elements.resultLetter) this.elements.resultLetter.innerText = '-';
+        if (this.elements.accumulatedText) this.elements.accumulatedText.innerText = '-';
+        if (this.elements.iterationDisplay) this.elements.iterationDisplay.innerText = 'Iteration: - / -';
+        this.updatePlayButton(false);
+        const th = this.elements.thonnyScreen;
+        if (th) th.classList.add('hidden');
+        const dec = this.elements.decryptionScreen;
+        if (dec) dec.classList.remove('hidden');
     },
 
-    attachListeners: () => {
-        const els = UIController.elements;
-
-        // Playback
-        if (els.btnStepForward) els.btnStepForward.addEventListener('click', LoopEngine.nextStep);
-        if (els.btnStepBack) els.btnStepBack.addEventListener('click', LoopEngine.prevStep);
-        if (els.btnPlay) els.btnPlay.addEventListener('click', LoopEngine.play);
-        if (els.btnPause) els.btnPause.addEventListener('click', LoopEngine.pause);
-
-        if (els.btnReset) els.btnReset.addEventListener('click', () => {
-            LoopEngine.init(LoopEngine.state.encryptedText, LoopEngine.state.key);
-        });
-
-        if (els.speedSlider) els.speedSlider.addEventListener('input', () => {
-            if (LoopEngine.state.isPlaying) {
-                LoopEngine.pause();
-                LoopEngine.play();
-            }
-        });
-
-        if (els.explicitIndexToggle) els.explicitIndexToggle.addEventListener('change', () => {
-            LoopEngine.notifyUI();
-        });
-
-        // Setup & Mission flow
-        if (els.btnStartClass) els.btnStartClass.addEventListener('click', () => {
-            const classId = els.classIdInput.value.trim();
-            const studentId = els.studentIdInput.value.trim();
-            if (classId && studentId) {
-                ClassSync.setIdentity(classId, studentId);
-                els.classSetupScreen.classList.add('hidden');
-                els.diagnosticScreen.classList.remove('hidden');
-            } else {
-                alert("Identity Required for Mission Access");
-            }
-        });
-
-        if (els.btnStartMission) els.btnStartMission.addEventListener('click', () => {
-            const txt = els.encryptedInput.value || "khoor zruog";
-            const key = parseInt(els.keyInput.value) || 3;
-            LoopEngine.init(txt, key);
-        });
-
-        if (els.btnExportData) els.btnExportData.addEventListener('click', ClassSync.exportClassCSV);
-
-        // Keyboard accessibility
-        document.addEventListener('keydown', (e) => {
-            // Only if mission screen is active
-            if (els.decryptionScreen && !els.decryptionScreen.classList.contains('hidden')) {
-                if (e.key === 'ArrowRight') LoopEngine.nextStep();
-                if (e.key === 'ArrowLeft') LoopEngine.prevStep();
-                if (e.key === ' ') {
-                    e.preventDefault();
-                    LoopEngine.state.isPlaying ? LoopEngine.pause() : LoopEngine.play();
+    attachListeners() {
+        const els = this.elements;
+        if (els.btnStepForward) els.btnStepForward.addEventListener('click', () => LoopEngine.nextStep());
+        if (els.btnStepBack) els.btnStepBack.addEventListener('click', () => LoopEngine.prevStep());
+        if (els.btnPlay) els.btnPlay.addEventListener('click', () => LoopEngine.play());
+        if (els.btnPause) els.btnPause.addEventListener('click', () => LoopEngine.pause());
+        if (els.btnReset) els.btnReset.addEventListener('click', () => LoopEngine.reset());
+        if (els.btnReveal) els.btnReveal.addEventListener('click', () => {
+            // check prediction if any
+            const guess = parseInt(els.predictInput ? els.predictInput.value : NaN, 10);
+            const currentSnap = LoopEngine.state.history[LoopEngine.state.history.length - 1];
+            if (!isNaN(guess) && currentSnap && !currentSnap.result.isSpecial) {
+                if (guess === currentSnap.result.newIndex) {
+                    if (els.predictFeedback) { els.predictFeedback.innerText = "Nice! Prediction correct."; }
+                } else {
+                    if (els.predictFeedback) { els.predictFeedback.innerText = `Not quite — expected ${currentSnap.result.newIndex}.`; }
                 }
+            }
+            LoopEngine.revealPrediction();
+        });
+        if (els.btnSkipPredict) els.btnSkipPredict.addEventListener('click', () => LoopEngine.skipPrediction());
+
+        // Start mission button
+        const startBtn = $id('btnStartMission');
+        if (startBtn) startBtn.addEventListener('click', () => {
+            const encrypted = $id('encryptedInput') ? $id('encryptedInput').value : 'khoor zruog';
+            const key = $id('keyInput') ? parseInt($id('keyInput').value, 10) : CONFIG.DEFAULT_KEY;
+            LoopEngine.init(encrypted, key);
+        });
+
+        // Export CSV
+        if (els.btnExportData) els.btnExportData.addEventListener('click', () => {
+            const classId = els.classIdInput ? els.classIdInput.value : 'default';
+            ClassSync.exportClassCSV(classId);
+        });
+
+        // Class setup
+        if (els.btnStartClass) els.btnStartClass.addEventListener('click', () => {
+            const classId = els.classIdInput ? (els.classIdInput.value || 'default') : 'default';
+            const studentId = els.studentIdInput ? (els.studentIdInput.value || 'unknown') : 'unknown';
+            // hide setup, show diagnostic
+            const setup = $id('classSetupScreen');
+            const diag = $id('diagnosticScreen');
+            if (setup) setup.classList.add('hidden');
+            if (diag) diag.classList.remove('hidden');
+            // store temporarily in UIController
+            els.classIdInput.value = classId;
+            els.studentIdInput.value = studentId;
+        });
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') LoopEngine.nextStep();
+            if (e.key === 'ArrowLeft') LoopEngine.prevStep();
+            if (e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                LoopEngine.state.isPlaying ? LoopEngine.pause() : LoopEngine.play();
             }
         });
     }
 };
 
-/**
- * 4. DiagnosticController
- */
+// ---------- DiagnosticController ----------
 const DiagnosticController = {
-    init: () => {
+    init() {
         const options = document.querySelectorAll('.option-btn');
         options.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const isCorrect = e.target.dataset.correct === 'true';
                 const parent = e.target.closest('.task-card');
                 const feedback = $id('diagnosticFeedback');
-
                 if (isCorrect) {
-                    e.target.style.background = 'var(--accent-color)';
+                    e.target.style.background = '#00ff6a';
                     e.target.style.color = '#000';
-                    feedback.innerText = "CORRECT. ACCESSING NEXT NODE...";
-
+                    if (feedback) feedback.innerText = "CORRECT. ACCESSING NEXT NODE...";
                     setTimeout(() => {
-                        parent.classList.add('hidden');
-                        feedback.innerText = "";
-                        const next = parent.nextElementSibling;
-                        if (next && next.classList.contains('task-card')) {
-                            next.classList.remove('hidden');
-                        } else {
-                            // Diagnostic Done
-                            MissionController.startMission();
+                        if (parent) parent.classList.add('hidden');
+                        if (feedback) feedback.innerText = "";
+                        const next = parent ? parent.nextElementSibling : null;
+                        if (next && next.classList && next.classList.contains('task-card')) next.classList.remove('hidden');
+                        else {
+                            // All done -> start mission screen (show decryption screen)
+                            const diag = $id('diagnosticScreen');
+                            const dec = $id('decryptionScreen');
+                            if (diag) diag.classList.add('hidden');
+                            if (dec) dec.classList.remove('hidden');
+                            // set initial fields from UI
+                            const encrypted = $id('encryptedInput') ? $id('encryptedInput').value : 'khoor zruog';
+                            const key = $id('keyInput') ? parseInt($id('keyInput').value, 10) : CONFIG.DEFAULT_KEY;
+                            LoopEngine.init(encrypted, key);
                         }
-                    }, 800);
+                    }, 700);
                 } else {
-                    e.target.style.background = 'var(--alert-color)';
-                    feedback.innerText = "ACCESS DENIED. INCORRECT.";
+                    e.target.style.background = 'var(--danger)';
+                    if (feedback) feedback.innerText = "ACCESS DENIED. INCORRECT.";
                     setTimeout(() => {
                         e.target.style.background = '';
-                        feedback.innerText = "";
+                        if (feedback) feedback.innerText = "";
                     }, 800);
                 }
             });
@@ -578,23 +539,7 @@ const DiagnosticController = {
     }
 };
 
-/**
- * 5. MissionController
- */
-const MissionController = {
-    startMission: () => {
-        $id('diagnosticScreen').classList.add('hidden');
-        const decryptScreen = $id('decryptionScreen');
-        decryptScreen.classList.remove('hidden');
-        decryptScreen.classList.add('active');
-
-        // Initial setup
-        LoopEngine.init("khoor zruog", 3);
-    }
-};
-
-// Start
+// ---------- Boot ----------
 document.addEventListener('DOMContentLoaded', () => {
     UIController.init();
-    DiagnosticController.init();
 });
