@@ -15,19 +15,20 @@
         <section id="classSetupScreen" class="screen active center-screen">
             <h1>Spy School — Classroom Access</h1>
             <div class="form-row">
-                <label>Class ID
-                    <input id="classIdInput" type="text" placeholder="e.g. ENG9A">
+                <label>Class ID (Access Code)
+                    <!-- FIXED & READONLY: SPY-ACADEMY -->
+                    <input id="classIdInput" type="text" value="SPY-ACADEMY" readonly
+                        style="background: #e2e8f0; cursor: not-allowed; color: #64748b; font-weight: 700;">
                 </label>
             </div>
             <div class="form-row">
                 <label>Student Name / ID
-                    <input id="studentIdInput" type="text" placeholder="e.g. Jane Doe">
+                    <input id="studentIdInput" type="text" placeholder="Enter your assigned Agent Name">
                 </label>
             </div>
             <div class="form-row">
                 <button id="btnStartClass" class="primary">ENTER MISSION</button>
             </div>
-            <p class="small muted">This stores attempts locally and allows you to export class CSVs.</p>
         </section>
 
         <!-- DIAGNOSTIC SCREEN -->

@@ -5,12 +5,27 @@
 function $id(id) { return document.getElementById(id) || null; }
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
-// ---------- Config ----------
+// ---------- Config & Database ----------
 const CONFIG = {
     ALPHABET: 'abcdefghijklmnopqrstuvwxyz'.split(''),
     DEFAULT_KEY: 3,
     SPEED_LEVELS: [2000, 1500, 1000, 600, 300]
 };
+
+// [TEACHER EDITABLE AREA] --------------------------------------------------
+// Add new student names here (Case-insensitive)
+const STUDENT_DATABASE = [
+    "Goodnews",
+    "Gabriel",
+    "Agent 001",
+    "Jane Doe",
+    "James Bond",
+    "Austin Powers",
+    "Black Widow",
+    "Sherlock Holmes",
+    "Nancy Drew"
+];
+// -------------------------------------------------------------------------
 
 // ---------- CipherEngine ----------
 const CipherEngine = {
@@ -490,14 +505,41 @@ print(decrypted)
             ClassSync.exportClassCSV(classId);
         });
 
-        // Class setup
+        // Class setup - FIXED ID & STUDENT WHITELIST CHECK
         if (els.btnStartClass) els.btnStartClass.addEventListener('click', () => {
-            const classId = els.classIdInput ? (els.classIdInput.value || 'default') : 'default';
-            const studentId = els.studentIdInput ? (els.studentIdInput.value || 'unknown') : 'unknown';
+            const enteredId = els.classIdInput ? els.classIdInput.value.trim().toUpperCase() : '';
+            const studentId = els.studentIdInput ? (els.studentIdInput.value || '').trim() : '';
 
+            // 1. Fixed Password Check
+            // CHANGE THIS VALUE TO SET YOUR CLASS PASSWORD
+            const FIXED_CLASS_ID = "SPY-ACADEMY";
+
+            if (enteredId !== FIXED_CLASS_ID) {
+                alert("ACCESS DENIED: INCORRECT CLASS ID.\nPlease enter the correct code (e.g. SPY-ACADEMY).");
+                if (els.classIdInput) {
+                    els.classIdInput.value = "";
+                    els.classIdInput.focus();
+                }
+                return;
+            }
+
+            // 2. Student Whitelist Check
+            // Case-insensitive lookup
+            const foundStudent = STUDENT_DATABASE.find(name => name.toLowerCase() === studentId.toLowerCase());
+
+            if (!foundStudent) {
+                alert(`ACCESS DENIED: IDENTITY UNVERIFIED.\nAgent "${studentId}" is not in the mission database.\nPlease contact your handler.`);
+                if (els.studentIdInput) {
+                    els.studentIdInput.value = "";
+                    els.studentIdInput.focus();
+                }
+                return;
+            }
+
+            // Store standardized identity
             // store temporarily in UIController
-            els.classIdInput.value = classId;
-            els.studentIdInput.value = studentId;
+            if (els.classIdInput) els.classIdInput.value = enteredId;
+            if (els.studentIdInput) els.studentIdInput.value = foundStudent; // Use proper casing from DB
 
             // Transition using new helper
             this.showScreen('diagnosticScreen');
@@ -518,38 +560,67 @@ print(decrypted)
 // ---------- DiagnosticController ----------
 const DiagnosticController = {
     init() {
+        // STATE-BASED INIT
+        const tasks = document.querySelectorAll('.task-card');
+        tasks.forEach((t, i) => {
+            // Clear any old classes just in case
+            t.classList.remove('hidden', 'state-active', 'state-incoming', 'state-outgoing');
+
+            if (i === 0) {
+                t.classList.add('state-active');
+            } else {
+                t.classList.add('state-incoming');
+            }
+        });
+
         const options = document.querySelectorAll('.option-btn');
         options.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const isCorrect = e.target.dataset.correct === 'true';
                 const parent = e.target.closest('.task-card');
                 const feedback = $id('diagnosticFeedback');
+
                 if (isCorrect) {
-                    e.target.style.background = '#00ff6a';
-                    e.target.style.color = '#000';
+                    e.target.style.background = 'var(--success)';
+                    e.target.style.color = '#fff';
                     if (feedback) feedback.innerText = "CORRECT. ACCESSING NEXT NODE...";
+
+                    // TRANSITION LOGIC
                     setTimeout(() => {
-                        if (parent) parent.classList.add('hidden');
                         if (feedback) feedback.innerText = "";
-                        const next = parent ? parent.nextElementSibling : null;
-                        if (next && next.classList && next.classList.contains('task-card')) next.classList.remove('hidden');
-                        else {
-                            // All done -> start mission screen
 
-                            // Initialize fields
-                            const encrypted = $id('encryptedInput') ? $id('encryptedInput').value : 'khoor zruog';
-                            const key = $id('keyInput') ? parseInt($id('keyInput').value, 10) : CONFIG.DEFAULT_KEY;
+                        if (parent) {
+                            // 1. Current card exits Left
+                            parent.classList.remove('state-active');
+                            parent.classList.add('state-outgoing');
 
-                            // Transition
-                            UIController.showScreen('decryptionScreen');
-                            LoopEngine.init(encrypted, key);
+                            // 2. Next card enters from Right
+                            const next = parent.nextElementSibling;
+                            if (next && next.classList.contains('task-card')) {
+                                next.classList.remove('state-incoming');
+                                // Force reflow to ensure transition triggers if needed, 
+                                // though usually removing incoming and adding active is enough 
+                                // if they have different transform states.
+                                void next.offsetWidth;
+                                next.classList.add('state-active');
+
+                            } else {
+                                // All done -> start mission screen
+                                const encrypted = $id('encryptedInput') ? $id('encryptedInput').value : 'khoor zruog';
+                                const key = $id('keyInput') ? parseInt($id('keyInput').value, 10) : CONFIG.DEFAULT_KEY;
+
+                                UIController.showScreen('decryptionScreen');
+                                LoopEngine.init(encrypted, key);
+                            }
                         }
-                    }, 700);
+                    }, 500); // Short pause to see green success state
                 } else {
                     e.target.style.background = 'var(--danger)';
+                    e.target.style.color = '#fff';
                     if (feedback) feedback.innerText = "ACCESS DENIED. INCORRECT.";
                     setTimeout(() => {
                         e.target.style.background = '';
+                        e.target.style.color = '';
                         if (feedback) feedback.innerText = "";
                     }, 800);
                 }
